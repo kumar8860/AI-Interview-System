@@ -1,2 +1,2 @@
 def predict_answer(question):
-    return "AI response will come here"
+    return f"AI response for: {question}"
