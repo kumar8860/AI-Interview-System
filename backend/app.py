@@ -1,119 +1,84 @@
+import sys
+import os
+
+# Add project root to path
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-import requests
+import os
 
+# Local AI (your model)
+from ml_models.model import predict_answer
+from ml_models.emotion import analyze_voice
+
+# -------- INIT --------
 app = Flask(__name__)
 CORS(app)
-
-# -------- YOUR API KEY --------
-OPENAI_API_KEY = "YOUR_API_KEY_HERE"
 
 # -------- MEMORY --------
 conversation_history = []
 
+# -------- HOME --------
+@app.route('/')
+def home():
+    return "✅ Backend is running"
 
 # -------- START INTERVIEW --------
 @app.route('/start', methods=['POST'])
 def start():
-    data = request.get_json()
-    role = data.get("role", "general")
-
-    system_prompt = ""
+    data = request.get_json() or {}
+    role = data.get("role", "hr")
 
     if role == "sde":
-        system_prompt = "You are a strict technical interviewer for software engineering roles. Ask deep technical questions and follow-ups."
-        first_question = "Introduce yourself as a software developer."
+        first_question = "Explain your favorite data structure."
     elif role == "data_analyst":
-        system_prompt = "You are a data analyst interviewer. Focus on SQL, Python, statistics, and projects."
-        first_question = "Tell me about your data analysis experience."
+        first_question = "Explain a project where you used SQL or Python."
     else:
-        system_prompt = "You are a professional HR interviewer. Ask behavioral and communication questions."
         first_question = "Tell me about yourself."
 
     conversation_history.clear()
-
-    conversation_history.append({
-        "role": "system",
-        "content": system_prompt
-    })
-
-    conversation_history.append({
-        "role": "assistant",
-        "content": first_question
-    })
+    conversation_history.append({"question": first_question})
 
     return jsonify({"question": first_question})
 
-
-# -------- GPT CALL --------
-def ask_gpt(user_answer):
-    conversation_history.append({
-        "role": "user",
-        "content": user_answer
-    })
-
-    response = requests.post(
-        "https://api.openai.com/v1/chat/completions",
-        headers={
-            "Authorization": f"Bearer {OPENAI_API_KEY}",
-            "Content-Type": "application/json"
-        },
-        json={
-            "model": "gpt-4o-mini",
-            "messages": conversation_history,
-            "temperature": 0.7
-        }
-    )
-
-    result = response.json()
-
-    ai_reply = result["choices"][0]["message"]["content"]
+# -------- LOCAL AI FUNCTION --------
+def ask_ai(answer):
+    # Generate next question using local model
+    next_q = predict_answer(answer)
 
     conversation_history.append({
-        "role": "assistant",
-        "content": ai_reply
+        "answer": answer,
+        "next_question": next_q
     })
 
-    return ai_reply
-
-
-# -------- SCORE --------
-def calculate_score(answer):
-    words = len(answer.split())
-
-    if words > 30:
-        return 9
-    elif words > 15:
-        return 7
-    return 5
-
-
-# -------- CONFIDENCE --------
-def confidence_level(answer):
-    if "confident" in answer.lower():
-        return "High"
-    if "maybe" in answer.lower() or "i think" in answer.lower():
-        return "Medium"
-    return "Low"
-
+    return next_q
 
 # -------- INTERVIEW --------
 @app.route('/interview', methods=['POST'])
 def interview():
-    data = request.get_json()
+
+    data = request.get_json() or {}
     answer = data.get("answer", "")
 
-    next_question = ask_gpt(answer)
+    # AI next question
+    next_question = ask_ai(answer)
 
-    score = calculate_score(answer)
-    confidence = confidence_level(answer)
+    # Voice analysis
+    analysis = analyze_voice(answer)
 
     return jsonify({
         "next_question": next_question,
-        "score": score,
-        "confidence": confidence
+        "analysis": analysis
     })
 
+# -------- DEBUG --------
+@app.route('/routes')
+def routes():
+    return str(app.url_map)
 
+# -------- RUN --------
 if __name__ == '__main__':
+    print("🚀 Backend starting...")
+    print(app.url_map)
     app.run(debug=True)
