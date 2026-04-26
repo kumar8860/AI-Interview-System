@@ -1,14 +1,11 @@
-import { useState } from "react";
-import Home from "./pages/Home";
-import Interview from "./pages/Interview";
+import React from 'react';
+import Interview from './components/Interview'; // Ensure path is correct
 
 function App() {
-  const [start, setStart] = useState(false);
-
-  return start ? (
-    <Interview />
-  ) : (
-    <Home start={() => setStart(true)} />
+  return (
+    <div className="App">
+      <Interview />
+    </div>
   );
 }
 
