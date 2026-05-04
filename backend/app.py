@@ -42,18 +42,17 @@ def start():
         else:
             level_rules = "Candidate is a Senior. Ask about system design, scalability, and complex trade-offs."
 
-        system_msg = (
-            f"You are a friendly Interviewer for the position of: '{role}'. "
-            f"Candidate's level: {level}. Round: {mode}. "
-            f"Resume Context: {resume_text[:1000]}... \n\n"
-            f"INSTRUCTIONS:\n"
-            f"1. Ask 50% of your questions about basic, standard skills for a {role}.\n"
-            f"2. Ask 50% of your questions based on their resume.\n"
-            f"{level_rules}\n"
-            f"3. STRICT RULE: Your ENTIRE response must be 1 or 2 sentences MAXIMUM.\n"
-            f"4. If you want to show a code example, wrap it in markdown (
-```)."
-        )
+        # Using triple quotes here to prevent formatting errors
+        system_msg = f"""You are a friendly Interviewer for the position of: '{role}'. 
+Candidate's level: {level}. Round: {mode}. 
+Resume Context: {resume_text[:1000]}...
+
+INSTRUCTIONS:
+1. Ask 50% of your questions about basic, standard skills for a {role}.
+2. Ask 50% of your questions based on their resume.
+{level_rules}
+3. STRICT RULE: Your ENTIRE response must be 1 or 2 sentences MAXIMUM.
+4. If you want to show a code example, wrap it in markdown format."""
         
         completion = client.chat.completions.create(
             messages=[
@@ -96,18 +95,16 @@ def interview():
     is_final = session["turns"] >= 5 
     
     if is_final:
-        user_input = (
-            f"Candidate Answer: {ans} | Code: {code if code else 'Empty'}\n\n"
-            "SYSTEM: This is the final turn. Say exactly: 'Thank you, that concludes our interview. I am compiling your results now.' DO NOT ask another question."
-        )
+        user_input = f"""Candidate Answer: {ans} | Code: {code if code else 'Empty'}
+
+SYSTEM: This is the final turn. Say exactly: 'Thank you, that concludes our interview. I am compiling your results now.' DO NOT ask another question."""
     else:
-        user_input = (
-            f"Candidate Answer: {ans} | Code: {code if code else 'Empty'}\n\n"
-            f"SYSTEM:\n"
-            f"1. Acknowledge the candidate's answer briefly.\n"
-            f"2. Ask ONE simple, broad question about a different topic for a {session['role']}.\n"
-            f"3. Limit your reply to under 30 words."
-        )
+        user_input = f"""Candidate Answer: {ans} | Code: {code if code else 'Empty'}
+
+SYSTEM:
+1. Acknowledge the candidate's answer briefly.
+2. Ask ONE simple, broad question about a different topic for a {session['role']}.
+3. Limit your reply to under 30 words."""
 
     session["messages"].append({"role": "user", "content": user_input})
 
@@ -125,7 +122,6 @@ def interview():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-# --- NEW: THE EVALUATION ENDPOINT ---
 @app.route('/evaluate', methods=['POST'])
 def evaluate():
     data = request.json
@@ -136,12 +132,32 @@ def evaluate():
         
     session = sessions[sid]
     
-    # Prompting the AI to return a strict JSON format
-    eval_prompt = (
-        "The interview is complete. Review the ENTIRE conversation above. "
-        "Evaluate the candidate's technical accuracy, communication, and confidence. "
-        "You MUST respond ONLY with a valid JSON object. Do not include markdown formatting or extra text. "
-        "Use this EXACT structure:\n"
-        "{\n"
-        "  \"score\": <integer from 0 to 100>,\n"
-        "  \"summary\": \"
+    # Using triple quotes avoids all the \" slash escaping nightmares!
+    eval_prompt = """The interview is complete. Review the ENTIRE conversation above. Evaluate the candidate's technical accuracy, communication, and confidence. You MUST respond ONLY with a valid JSON object. Do not include markdown formatting or extra text. Use this EXACT structure:
+{
+  "score": 85,
+  "summary": "A detailed 3-sentence summary of how the interview went.",
+  "strengths": ["strength 1", "strength 2", "strength 3"],
+  "weaknesses": ["weakness 1", "weakness 2"],
+  "improvements": ["actionable tip 1", "actionable tip 2"]
+}"""
+    
+    eval_messages = session["messages"] + [{"role": "user", "content": eval_prompt}]
+
+    try:
+        completion = client.chat.completions.create(
+            messages=eval_messages,
+            model="llama-3.1-8b-instant",
+            temperature=0.2, 
+            response_format={"type": "json_object"} 
+        )
+        result = completion.choices[0].message.content
+        parsed_result = json.loads(result)
+        return jsonify(parsed_result)
+        
+    except Exception as e:
+        print(f"Evaluation Error: {str(e)}")
+        return jsonify({"error": "Failed to generate evaluation report."}), 500
+
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=5000, debug=True)
